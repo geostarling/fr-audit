@@ -44,9 +44,9 @@
        <url>https://bugster.forgerock.org/jira/browse/COMMONS</url>
     </issueManagement>
     <scm>
-        <connection>scm:git:ssh://git@stash.forgerock.org:7999/commons/forgerock-audit.git</connection>
-        <developerConnection>scm:git:ssh://git@stash.forgerock.org:7999/commons/forgerock-audit.git</developerConnection>
-        <url>http://stash.forgerock.org/projects/COMMONS/repos/forgerock-audit/browse</url>
+        <connection>scm:git:ssh://git@stash.forgerock.org:7999/legacycommons/forgerock-audit.git</connection>
+        <developerConnection>scm:git:ssh://git@stash.forgerock.org:7999/legacycommons/forgerock-audit.git</developerConnection>
+        <url>http://stash.forgerock.org/projects/LEGACYCOMMONS/repos/forgerock-audit/browse</url>
       <tag>HEAD</tag>
   </scm>
     <properties>
