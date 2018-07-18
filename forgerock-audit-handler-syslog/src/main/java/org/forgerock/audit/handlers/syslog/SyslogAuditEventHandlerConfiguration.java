@@ -21,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import org.forgerock.audit.events.handlers.EventHandlerConfiguration;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.forgerock.audit.handlers.syslog.formatters.StandardStructuredDataFormatter;
 import org.forgerock.util.Reject;
 
 import java.util.ArrayList;
@@ -75,6 +76,10 @@ public class SyslogAuditEventHandlerConfiguration extends EventHandlerConfigurat
     @JsonProperty(required=true)
     @JsonPropertyDescription("audit.handlers.syslog.facility")
     private Facility facility;
+
+    @JsonProperty
+    @JsonPropertyDescription("audit.handlers.syslog.structuredDataFormatterClass")
+    private String structuredDataFormatterClass = StandardStructuredDataFormatter.class.getName();
 
     @JsonProperty
     @JsonPropertyDescription("audit.handlers.syslog.severityFieldMappings")
@@ -223,6 +228,14 @@ public class SyslogAuditEventHandlerConfiguration extends EventHandlerConfigurat
      */
     public void setBufferingConfiguration(EventBufferingConfiguration bufferingConfiguration) {
         this.buffering = bufferingConfiguration;
+    }
+
+    public String getStructuredDataFormatterClass() {
+        return structuredDataFormatterClass;
+    }
+
+    public void setStructuredDataFormatterClass(String structuredDataFormatterClass) {
+        this.structuredDataFormatterClass = structuredDataFormatterClass;
     }
 
     /**

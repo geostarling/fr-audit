@@ -16,16 +16,12 @@
  */
 package org.forgerock.audit.handlers.syslog;
 
-import static java.util.Arrays.asList;
-import static java.util.Collections.unmodifiableSet;
 import static org.forgerock.audit.events.AuditEventBuilder.*;
 import static org.forgerock.audit.events.AuditEventHelper.getAuditEventSchema;
-import static org.forgerock.audit.events.AuditEventHelper.jsonPointerToDotNotation;
 import static org.forgerock.audit.util.JsonSchemaUtils.generateJsonPointers;
-import static org.forgerock.audit.util.JsonValueUtils.extractValueAsString;
 
-import org.forgerock.audit.AuditService;
 import org.forgerock.audit.events.EventTopicsMetaData;
+import org.forgerock.audit.handlers.syslog.formatters.StructuredDataFormatter;
 import org.forgerock.audit.providers.LocalHostNameProvider;
 import org.forgerock.audit.providers.ProductInfoProvider;
 import org.forgerock.audit.events.AuditEvent;
@@ -39,7 +35,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -85,7 +80,7 @@ class SyslogFormatter {
         this.severityFieldMappings =
                 createSeverityFieldMappings(config.getSeverityFieldMappings(), eventTopicsMetaData);
         this.structuredDataFormatters = Collections.unmodifiableMap(
-                createStructuredDataFormatters(appName, eventTopicsMetaData));
+                createStructuredDataFormatters(appName, eventTopicsMetaData, config.getStructuredDataFormatterClass()));
     }
 
     /**
@@ -174,14 +169,32 @@ class SyslogFormatter {
 
     private Map<String, StructuredDataFormatter> createStructuredDataFormatters(
             String productName,
-            EventTopicsMetaData eventTopicsMetaData) {
+            EventTopicsMetaData eventTopicsMetaData,
+            String dataFormatterClassName) {
 
         final Map<String, StructuredDataFormatter> results = new HashMap<>();
         for (String topic : eventTopicsMetaData.getTopics()) {
             JsonValue schema = eventTopicsMetaData.getSchema(topic);
-            results.put(topic, new StructuredDataFormatter(productName, topic, schema));
+            results.put(topic, instantiateStructuredDataFormatter(dataFormatterClassName, productName, topic, schema));
         }
         return results;
+    }
+
+    private StructuredDataFormatter instantiateStructuredDataFormatter(String className, String productName, String topic, JsonValue schema) {
+        Class formatterClz;
+        try {
+            formatterClz = Class.forName(className);
+            if (!StructuredDataFormatter.class.isAssignableFrom(formatterClz)) {
+                throw new IllegalArgumentException("");
+            }
+            StructuredDataFormatter inst = (StructuredDataFormatter) formatterClz.newInstance();
+            inst.initialize(productName, topic, schema);
+            return inst;
+        } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException("Structured data formatter class cannot be found", e);
+        } catch (InstantiationException | IllegalAccessException e) {
+            throw new IllegalArgumentException("Failed to instantiate structured data formatter", e);
+        }
     }
 
     private Severity getSeverityLevel(String topic, JsonValue auditEvent) {
@@ -236,91 +249,4 @@ class SyslogFormatter {
         return productName != null ? productName : NIL_VALUE;
     }
 
-    /**
-     * Responsible for formatting an {@link AuditEvent}'s JSON representation as an RFC-5424 compliant SD-ELEMENT.
-     *
-     * Objects are immutable and can therefore be freely shared across threads without synchronization.
-     *
-     * @see <a href="https://tools.ietf.org/html/rfc5424#section-6.3">RFC-5424 section 6.3</a>
-     */
-    private static class StructuredDataFormatter {
-
-        private static final String FORGEROCK_IANA_ENTERPRISE_ID = "36733";
-        /**
-         * The set of audit event fields that should not be copied to structured-data.
-         */
-        private static final Set<String> IGNORED_FIELDS = unmodifiableSet(
-                new HashSet<>(asList("_id", TIMESTAMP, EVENT_NAME)));
-
-        private final String id;
-        private final Set<String> fieldNames;
-
-        /**
-         * Construct a new StructuredDataFormatter.
-         *
-         * @param productName Name of the ForgeRock product in which the {@link AuditService}
-         *                    is executing; the SD-ID of each STRUCTURED-DATA element is derived from the
-         *                    <code>productName</code> and <code>topic</code>.
-         * @param topic Coarse-grained categorisation of the types of audit events that this formatter handles;
-         *              the SD-ID of each STRUCTURED-DATA element is derived from the <code>productName</code>
-         *              and <code>topic</code>.
-         * @param auditEventMetaData Schema and additional meta-data for the audit event topic.
-         */
-        public StructuredDataFormatter(String productName, String topic, JsonValue auditEventMetaData) {
-
-            Reject.ifNull(productName, "Product name required.");
-            Reject.ifNull(topic, "Audit event topic name required.");
-
-            JsonValue auditEventSchema;
-            try {
-                auditEventSchema = getAuditEventSchema(auditEventMetaData);
-            } catch (ResourceException e) {
-                throw new IllegalArgumentException(e.getMessage(), e);
-            }
-
-            id = topic + "." + productName + "@" + FORGEROCK_IANA_ENTERPRISE_ID;
-            fieldNames = unmodifiableSet(generateJsonPointers(auditEventSchema));
-        }
-
-        /**
-         * Translate the provided <code>auditEvent</code> to an RFC-5424 compliant SD-ELEMENT.
-         *
-         * @param auditEvent The audit event to be formatted.
-         *
-         * @return an RFC-5424 compliant SD-ELEMENT.
-         */
-        public String format(JsonValue auditEvent) {
-
-            StringBuilder sd = new StringBuilder();
-
-            sd.append("[");
-            sd.append(id);
-            for (String fieldName : fieldNames) {
-                String formattedName = formatParamName(fieldName);
-                if (IGNORED_FIELDS.contains(formattedName)) {
-                    continue;
-                }
-                sd.append(" ");
-                sd.append(formattedName);
-                sd.append("=\"");
-                sd.append(formatParamValue(extractValueAsString(auditEvent, fieldName)));
-                sd.append("\"");
-            }
-            sd.append("]");
-
-            return sd.toString();
-        }
-
-        private String formatParamName(String name) {
-            return jsonPointerToDotNotation(name);
-        }
-
-        private String formatParamValue(String value) {
-            if (value == null) {
-                return "";
-            } else {
-                return value.replaceAll("[\\\\\"\\]]", "\\\\$0");
-            }
-        }
-    }
 }
